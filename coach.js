@@ -31,10 +31,10 @@ async function initCoach(user) {
 
 async function loadAll() {
   const [s, c, ts, sn] = await Promise.all([
-    supabase.from('profiles').select('*').eq('role', 'surfer').order('name'),
-    supabase.from('clips').select('*').order('created_at', { ascending: false }),
-    supabase.from('timestamps').select('*').order('time_seconds'),
-    supabase.from('snapshots').select('*').order('created_at', { ascending: false }),
+    db.from('profiles').select('*').eq('role', 'surfer').order('name'),
+    db.from('clips').select('*').order('created_at', { ascending: false }),
+    db.from('timestamps').select('*').order('time_seconds'),
+    db.from('snapshots').select('*').order('created_at', { ascending: false }),
   ]);
   surfers = s.data || [];
   allClips = c.data || [];
@@ -132,7 +132,7 @@ async function uploadClipToSurfer(u, surferId) {
   try {
     // Upload to Supabase storage
     const path = `${surferId}/${Date.now()}_${u.name}`;
-    const { data: storageData, error: storageErr } = await supabase.storage
+    const { data: storageData, error: storageErr } = await db.storage
       .from(VIDEO_BUCKET)
       .upload(path, u.file, {
         onUploadProgress: (p) => {
@@ -142,10 +142,10 @@ async function uploadClipToSurfer(u, surferId) {
     if (storageErr) throw storageErr;
 
     // Get public URL
-    const { data: { publicUrl } } = supabase.storage.from(VIDEO_BUCKET).getPublicUrl(path);
+    const { data: { publicUrl } } = db.storage.from(VIDEO_BUCKET).getPublicUrl(path);
 
     // Insert clip record
-    const { data: clip, error: clipErr } = await supabase
+    const { data: clip, error: clipErr } = await db
       .from('clips')
       .insert({ name: u.name, surfer_id: surferId, video_url: publicUrl, storage_path: path })
       .select().single();
@@ -198,9 +198,9 @@ async function deleteSurfer(surferId) {
   // Delete storage files
   const clips = allClips.filter(c => c.surfer_id === surferId);
   const paths = clips.map(c => c.storage_path).filter(Boolean);
-  if (paths.length) await supabase.storage.from(VIDEO_BUCKET).remove(paths);
+  if (paths.length) await db.storage.from(VIDEO_BUCKET).remove(paths);
   // Delete DB records (cascades via FK)
-  await supabase.from('profiles').delete().eq('id', surferId);
+  await db.from('profiles').delete().eq('id', surferId);
   await loadAll();
   renderHome();
   if (currentSurferId === surferId) goHome();
@@ -348,7 +348,7 @@ function renderSnapshots(snaps, clipId, isCoach) {
 async function saveClipNotes() {
   if (!currentClipId) return;
   const note = document.getElementById('clipNotes')?.value || '';
-  await supabase.from('clips').update({ coach_notes: note }).eq('id', currentClipId);
+  await db.from('clips').update({ coach_notes: note }).eq('id', currentClipId);
   const clip = allClips.find(c => c.id === currentClipId);
   if (clip) clip.coach_notes = note;
 }
@@ -356,8 +356,8 @@ async function saveClipNotes() {
 async function deleteClip(clipId) {
   if (!confirm('Delete this clip?')) return;
   const clip = allClips.find(c => c.id === clipId);
-  if (clip?.storage_path) await supabase.storage.from(VIDEO_BUCKET).remove([clip.storage_path]);
-  await supabase.from('clips').delete().eq('id', clipId);
+  if (clip?.storage_path) await db.storage.from(VIDEO_BUCKET).remove([clip.storage_path]);
+  await db.from('clips').delete().eq('id', clipId);
   allClips = allClips.filter(c => c.id !== clipId);
   allTimestamps = allTimestamps.filter(t => t.clip_id !== clipId);
   allSnapshots = allSnapshots.filter(s => s.clip_id !== clipId);
@@ -374,7 +374,7 @@ function openDayModal(clipId) {
     { key: 'day', label: 'Day of Week', type: 'select', options: allDays.map(d => ({ value: d, label: d === 'Unassigned' ? '— Unassigned' : d })) }
   ], 'Assign', async (vals) => {
     const day = vals.day === 'Unassigned' ? null : vals.day;
-    await supabase.from('clips').update({ day_label: day }).eq('id', clipId);
+    await db.from('clips').update({ day_label: day }).eq('id', clipId);
     const c = allClips.find(x => x.id === clipId);
     if (c) c.day_label = day;
     renderClipsSidebar(allClips.filter(c => c.surfer_id === currentSurferId));
@@ -394,7 +394,7 @@ function renameSurfer() {
     { key: 'name', label: 'Name', value: s?.name || '' }
   ], 'Save', async (vals) => {
     if (!vals.name) throw new Error('Name required');
-    await supabase.from('profiles').update({ name: vals.name }).eq('id', currentSurferId);
+    await db.from('profiles').update({ name: vals.name }).eq('id', currentSurferId);
     await loadAll();
     renderHome();
     openProfile(currentSurferId);
@@ -645,7 +645,7 @@ function closeTsPopup() { document.getElementById('tsPopup').classList.remove('s
 async function saveTsNote() {
   const note = document.getElementById('tsNoteInput').value.trim();
   if (!note) { document.getElementById('tsNoteInput').focus(); return; }
-  const { data, error } = await supabase.from('timestamps').insert({ clip_id: analyzerClipId, time_seconds: tsPendingTime, note }).select().single();
+  const { data, error } = await db.from('timestamps').insert({ clip_id: analyzerClipId, time_seconds: tsPendingTime, note }).select().single();
   if (error) { toast('Error saving timestamp: ' + error.message, 'error'); return; }
   allTimestamps.push(data);
   closeTsPopup();
@@ -695,7 +695,7 @@ function startEditTs(id, btn) {
   if (isEditing) {
     const newNote = inp.value.trim();
     if (newNote) {
-      supabase.from('timestamps').update({ note: newNote }).eq('id', id).then(() => {
+      db.from('timestamps').update({ note: newNote }).eq('id', id).then(() => {
         const t = allTimestamps.find(x => x.id === id);
         if (t) t.note = newNote;
         noteEl.textContent = newNote;
@@ -709,7 +709,7 @@ function startEditTs(id, btn) {
 }
 
 async function deleteAnalyzerTs(id) {
-  await supabase.from('timestamps').delete().eq('id', id);
+  await db.from('timestamps').delete().eq('id', id);
   allTimestamps = allTimestamps.filter(t => t.id !== id);
   renderAnalyzerTsList();
   toast('Timestamp deleted', 'info');
@@ -740,10 +740,10 @@ async function aSaveSnapshot() {
 
   tmp.toBlob(async (blob) => {
     const path = `${analyzerClipId}/${Date.now()}.png`;
-    const { error: upErr } = await supabase.storage.from(SNAPSHOT_BUCKET).upload(path, blob);
+    const { error: upErr } = await db.storage.from(SNAPSHOT_BUCKET).upload(path, blob);
     if (upErr) { toast('Snapshot upload failed', 'error'); return; }
-    const { data: { publicUrl } } = supabase.storage.from(SNAPSHOT_BUCKET).getPublicUrl(path);
-    const { data: snap } = await supabase.from('snapshots').insert({ clip_id: analyzerClipId, image_url: publicUrl, storage_path: path }).select().single();
+    const { data: { publicUrl } } = db.storage.from(SNAPSHOT_BUCKET).getPublicUrl(path);
+    const { data: snap } = await db.from('snapshots').insert({ clip_id: analyzerClipId, image_url: publicUrl, storage_path: path }).select().single();
     if (snap) allSnapshots.push(snap);
     toast('Snapshot saved!', 'success');
   }, 'image/png');
@@ -751,8 +751,8 @@ async function aSaveSnapshot() {
 
 async function deleteSnapshot(snapId, clipId) {
   const snap = allSnapshots.find(s => s.id === snapId);
-  if (snap?.storage_path) await supabase.storage.from(SNAPSHOT_BUCKET).remove([snap.storage_path]);
-  await supabase.from('snapshots').delete().eq('id', snapId);
+  if (snap?.storage_path) await db.storage.from(SNAPSHOT_BUCKET).remove([snap.storage_path]);
+  await db.from('snapshots').delete().eq('id', snapId);
   allSnapshots = allSnapshots.filter(s => s.id !== snapId);
   const snaps = allSnapshots.filter(s => s.clip_id === clipId);
   const sec = document.getElementById('snapshotsSection');

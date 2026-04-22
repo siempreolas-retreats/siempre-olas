@@ -21,9 +21,9 @@ async function initSurfer(user) {
 
 async function loadSurferData() {
   const [c, ts, sn] = await Promise.all([
-    supabase.from('clips').select('*').eq('surfer_id', surferUser.id).order('created_at'),
-    supabase.from('timestamps').select('*').in('clip_id', await getClipIds()).order('time_seconds'),
-    supabase.from('snapshots').select('*').in('clip_id', await getClipIds()).order('created_at', { ascending: false }),
+    db.from('clips').select('*').eq('surfer_id', surferUser.id).order('created_at'),
+    db.from('timestamps').select('*').in('clip_id', await getClipIds()).order('time_seconds'),
+    db.from('snapshots').select('*').in('clip_id', await getClipIds()).order('created_at', { ascending: false }),
   ]);
   surferClips = c.data || [];
   surferTimestamps = ts.data || [];
@@ -31,7 +31,7 @@ async function loadSurferData() {
 }
 
 async function getClipIds() {
-  const { data } = await supabase.from('clips').select('id').eq('surfer_id', surferUser.id);
+  const { data } = await db.from('clips').select('id').eq('surfer_id', surferUser.id);
   return (data || []).map(c => c.id);
 }
 

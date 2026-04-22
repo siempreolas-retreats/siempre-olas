@@ -1,11 +1,7 @@
 // ── SUPABASE CONFIG ──
 const SUPABASE_URL = 'https://lrqgsiulejzsagvvfydf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxycWdzaXVsZWp6c2FndnZmeWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4MjQ1MTksImV4cCI6MjA5MjQwMDUxOX0.CIkJ-tvviW0tUqW3xyO9BjKmJ6JHD4ytdasE_7IZPj0';
- 
-const { createClient } = window.supabase;
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
- 
-// Storage bucket name
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const VIDEO_BUCKET = 'videos';
 const SNAPSHOT_BUCKET = 'snapshots';
- 
