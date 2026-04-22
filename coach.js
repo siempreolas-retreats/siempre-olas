@@ -212,19 +212,16 @@ function openAddSurfer() {
     { type: 'hint', text: 'Just enter a name. You can invite them to log in later from their profile.' }
   ], 'Add Surfer', async (vals) => {
     if (!vals.name) throw new Error('Name is required');
-    // Create a placeholder auth account with auto-generated credentials
-    // Surfer can be invited to set their own password later
-    const placeholderEmail = `${vals.name.toLowerCase().replace(/\s+/g,'')}${Date.now()}@siempreolas.placeholder`;
-    const placeholderPw = Math.random().toString(36).slice(2) + 'Aa1!';
-    const { data, error } = await db.auth.signUp({
-      email: placeholderEmail,
-      password: placeholderPw,
-      options: { data: { name: vals.name, role: 'surfer' } }
-    });
+    // Insert directly into profiles with a generated UUID — no auth account needed
+    const newId = crypto.randomUUID();
+    const { data, error } = await db.from('profiles').insert({
+      id: newId,
+      name: vals.name,
+      email: `${newId}@placeholder.local`,
+      role: 'surfer'
+    }).select().single();
     if (error) throw error;
-    // Profile is created by trigger — wait a moment then reload
-    await new Promise(r => setTimeout(r, 800));
-    await loadAll();
+    surfers.push(data);
     renderHome();
     toast(`${vals.name} added!`, 'success');
   });
