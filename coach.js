@@ -31,7 +31,7 @@ async function initCoach(user) {
 
 async function loadAll() {
   const [s, c, ts, sn] = await Promise.all([
-    db.from('profiles').select('*').eq('role', 'surfer').order('name'),
+    db.from('surfers').select('*').order('name'),
     db.from('clips').select('*').order('created_at', { ascending: false }),
     db.from('timestamps').select('*').order('time_seconds'),
     db.from('snapshots').select('*').order('created_at', { ascending: false }),
@@ -177,7 +177,7 @@ async function uploadClipToSurfer(u, surferId) {
     // Insert clip record
     const { data: clip, error: clipErr } = await db
       .from('clips')
-      .insert({ name: u.name, surfer_id: surferId, video_url: publicUrl, storage_path: path })
+      .insert({ name: u.name, surfer_id: surferId, surfer_ref: surferId, video_url: publicUrl, storage_path: path })
       .select().single();
     if (clipErr) throw clipErr;
 
@@ -212,14 +212,7 @@ function openAddSurfer() {
     { type: 'hint', text: 'Just enter a name. You can invite them to log in later from their profile.' }
   ], 'Add Surfer', async (vals) => {
     if (!vals.name) throw new Error('Name is required');
-    // Insert directly into profiles with a generated UUID — no auth account needed
-    const newId = crypto.randomUUID();
-    const { data, error } = await db.from('profiles').insert({
-      id: newId,
-      name: vals.name,
-      email: `${newId}@placeholder.local`,
-      role: 'surfer'
-    }).select().single();
+    const { data, error } = await db.from('surfers').insert({ name: vals.name }).select().single();
     if (error) throw error;
     surfers.push(data);
     renderHome();
@@ -244,7 +237,7 @@ function openInviteSurfer(surferId) {
     if (error) throw error;
     await new Promise(r => setTimeout(r, 800));
     // Update the surfer's profile with real email
-    await db.from('profiles').update({ email: vals.email }).eq('id', surferId);
+    await db.from('surfers').update({ email: vals.email, auth_user_id: data.user?.id }).eq('id', surferId);
     const s = surfers.find(x => x.id === surferId);
     if (s) s.email = vals.email;
     renderHome();
@@ -269,13 +262,12 @@ async function handleDropOnSurfer(e, surferId) {
 
 async function deleteSurfer(surferId) {
   if (!confirm('Delete this surfer and all their clips? This cannot be undone.')) return;
-  // Delete storage files
-  const clips = allClips.filter(c => c.surfer_id === surferId);
+  const clips = allClips.filter(c => c.surfer_id === surferId || c.surfer_ref === surferId);
   const paths = clips.map(c => c.storage_path).filter(Boolean);
   if (paths.length) await db.storage.from(VIDEO_BUCKET).remove(paths);
-  // Delete DB records (cascades via FK)
-  await db.from('profiles').delete().eq('id', surferId);
-  await loadAll();
+  await db.from('surfers').delete().eq('id', surferId);
+  surfers = surfers.filter(s => s.id !== surferId);
+  allClips = allClips.filter(c => c.surfer_id !== surferId && c.surfer_ref !== surferId);
   renderHome();
   if (currentSurferId === surferId) goHome();
   toast('Surfer deleted', 'info');
@@ -289,7 +281,7 @@ async function openProfile(surferId) {
   showScreen('profileScreen');
 
   const surfer = surfers.find(s => s.id === surferId);
-  const clips = allClips.filter(c => c.surfer_id === surferId);
+  const clips = allClips.filter(c => c.surfer_ref === surferId || c.surfer_id === surferId);
 
   document.getElementById('profileName').textContent = surfer?.name || '';
   document.getElementById('profileAvatar').textContent = surfer?.name?.[0]?.toUpperCase() || '?';
@@ -309,7 +301,7 @@ async function openProfile(surferId) {
 }
 
 function renderProfile() {
-  const clips = allClips.filter(c => c.surfer_id === currentSurferId);
+  const clips = allClips.filter(c => c.surfer_ref === currentSurferId || c.surfer_id === currentSurferId);
   document.getElementById('profileClipCount').textContent = `${clips.length} clip${clips.length !== 1 ? 's' : ''}`;
   document.getElementById('sidebarClipCount').textContent = clips.length;
   const compareBtn = document.getElementById('compareToggleBtn');
@@ -468,8 +460,9 @@ function renameSurfer() {
     { key: 'name', label: 'Name', value: s?.name || '' }
   ], 'Save', async (vals) => {
     if (!vals.name) throw new Error('Name required');
-    await db.from('profiles').update({ name: vals.name }).eq('id', currentSurferId);
-    await loadAll();
+    await db.from('surfers').update({ name: vals.name }).eq('id', currentSurferId);
+    const surfer = surfers.find(x => x.id === currentSurferId);
+    if (surfer) surfer.name = vals.name;
     renderHome();
     openProfile(currentSurferId);
   });
