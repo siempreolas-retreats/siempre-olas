@@ -130,7 +130,10 @@ html, body { height: 100%; width: 100%; background: var(--cream); color: var(--i
   white-space: nowrap; cursor: grab; transition: all 0.15s; flex-shrink: 0; color: var(--ink);
 }
 .clip-chip:hover { border-color: var(--coral); background: rgba(232,146,122,0.06); }
+.clip-chip.selected { border-color: var(--coral); background: rgba(232,146,122,0.1); }
 .clip-chip.dragging { opacity: 0.4; }
+.chip-check { cursor: pointer; opacity: 0.5; margin-right: 2px; font-size: 12px; }
+.clip-chip.selected .chip-check { opacity: 1; color: var(--coral); }
 .chip-del { margin-left: 4px; opacity: 0.4; cursor: pointer; font-size: 13px; color: var(--coral); }
 .chip-del:hover { opacity: 1; }
 

@@ -52,14 +52,15 @@ function renderHome() {
     const card = document.createElement('div');
     card.className = 'surfer-card';
     card.innerHTML = `
-      <div class="card-drop-hint">Drop clip here ↓</div>
+      <div class="card-drop-hint">Drop clips here ↓</div>
       <div class="card-header">
         <div class="surfer-avatar">${s.name[0].toUpperCase()}</div>
         <div class="surfer-info">
           <div class="surfer-name">${s.name}</div>
-          <div class="surfer-meta">${clips.length} clip${clips.length !== 1 ? 's' : ''}</div>
+          <div class="surfer-meta">${clips.length} clip${clips.length !== 1 ? 's' : ''} · ${s.email && !s.email.includes('placeholder') ? '✓ Can log in' : 'No login yet'}</div>
         </div>
         <div class="card-actions" onclick="event.stopPropagation()">
+          ${!s.email || s.email.includes('placeholder') ? `<div class="card-icon-btn" onclick="openInviteSurfer('${s.id}')" title="Invite to app">✉️</div>` : ''}
           <div class="card-icon-btn del" onclick="deleteSurfer('${s.id}')">✕</div>
         </div>
       </div>
@@ -97,6 +98,8 @@ function addToUnassigned(files) {
   if (files.length) toast(`${files.length} clip${files.length > 1 ? 's' : ''} ready to assign`, 'info');
 }
 
+let selectedClipIds = new Set();
+
 function renderUnassigned() {
   const tray = document.getElementById('clipTray');
   const badge = document.getElementById('unassignedCount');
@@ -106,12 +109,39 @@ function renderUnassigned() {
   if (badge) { badge.textContent = unassigned.length; badge.classList.add('show'); }
   unassigned.forEach(u => {
     const chip = document.createElement('div');
-    chip.className = 'clip-chip'; chip.draggable = true;
-    chip.innerHTML = `🎬 ${shortName(u.name)}<span class="chip-del" onclick="removeUnassigned('${u.id}',event)">✕</span>`;
-    chip.addEventListener('dragstart', e => { e.dataTransfer.setData('unassignedId', u.id); chip.classList.add('dragging'); });
+    const isSelected = selectedClipIds.has(u.id);
+    chip.className = 'clip-chip' + (isSelected ? ' selected' : '');
+    chip.draggable = true;
+    chip.innerHTML = `
+      <span class="chip-check" onclick="toggleChipSelect('${u.id}',event)">${isSelected ? '✓' : '○'}</span>
+      🎬 ${shortName(u.name)}
+      <span class="chip-del" onclick="removeUnassigned('${u.id}',event)">✕</span>`;
+    chip.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('unassignedId', u.id);
+      // If this chip is selected, also mark all selected for upload
+      if (!selectedClipIds.has(u.id)) {
+        selectedClipIds.clear();
+        selectedClipIds.add(u.id);
+      }
+      chip.classList.add('dragging');
+    });
     chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
     tray.appendChild(chip);
   });
+  // Show selected count hint
+  if (selectedClipIds.size > 1) {
+    const hint = document.createElement('span');
+    hint.style.cssText = 'font-size:11px;color:var(--coral);white-space:nowrap;align-self:center;';
+    hint.textContent = `${selectedClipIds.size} selected — drag any to assign all`;
+    tray.appendChild(hint);
+  }
+}
+
+function toggleChipSelect(id, e) {
+  e.stopPropagation();
+  if (selectedClipIds.has(id)) selectedClipIds.delete(id);
+  else selectedClipIds.add(id);
+  renderUnassigned();
 }
 
 function removeUnassigned(id, e) {
@@ -178,19 +208,66 @@ function showUploadProgress(show, name = '', pct = 0) {
 // ── SURFER CRUD ──
 function openAddSurfer() {
   openModal('Add Surfer', [
-    { key: 'name', label: 'Full Name', placeholder: 'e.g. Sarah' },
-    { key: 'email', label: 'Email Address', type: 'email', placeholder: 'surfer@email.com' },
-    { key: 'password', label: 'Password', type: 'password', placeholder: 'Min 6 characters' },
-    { type: 'hint', text: 'The surfer will receive a confirmation email and can log in to view their clips.' }
+    { key: 'name', label: 'Surfer Name', placeholder: 'e.g. Sarah' },
+    { type: 'hint', text: 'Just enter a name. You can invite them to log in later from their profile.' }
   ], 'Add Surfer', async (vals) => {
     if (!vals.name) throw new Error('Name is required');
-    if (!vals.email) throw new Error('Email is required');
-    if (!vals.password || vals.password.length < 6) throw new Error('Password must be at least 6 characters');
-    await createSurferAccount(vals.name, vals.email, vals.password);
+    // Create a placeholder auth account with auto-generated credentials
+    // Surfer can be invited to set their own password later
+    const placeholderEmail = `${vals.name.toLowerCase().replace(/\s+/g,'')}${Date.now()}@siempreolas.placeholder`;
+    const placeholderPw = Math.random().toString(36).slice(2) + 'Aa1!';
+    const { data, error } = await db.auth.signUp({
+      email: placeholderEmail,
+      password: placeholderPw,
+      options: { data: { name: vals.name, role: 'surfer' } }
+    });
+    if (error) throw error;
+    // Profile is created by trigger — wait a moment then reload
+    await new Promise(r => setTimeout(r, 800));
     await loadAll();
     renderHome();
     toast(`${vals.name} added!`, 'success');
   });
+}
+
+function openInviteSurfer(surferId) {
+  const surfer = surfers.find(s => s.id === surferId);
+  openModal('Invite to App', [
+    { key: 'email', label: 'Their Email Address', type: 'email', placeholder: 'surfer@email.com' },
+    { key: 'password', label: 'Set a Password for Them', type: 'password', placeholder: 'Min 6 characters' },
+    { type: 'hint', text: `${surfer?.name} can log in at siempre-olas.vercel.app to view their clips and timestamps.` }
+  ], 'Set Up Login', async (vals) => {
+    if (!vals.email) throw new Error('Email is required');
+    if (!vals.password || vals.password.length < 6) throw new Error('Password must be at least 6 characters');
+    const { data, error } = await db.auth.signUp({
+      email: vals.email,
+      password: vals.password,
+      options: { data: { name: surfer?.name, role: 'surfer' } }
+    });
+    if (error) throw error;
+    await new Promise(r => setTimeout(r, 800));
+    // Update the surfer's profile with real email
+    await db.from('profiles').update({ email: vals.email }).eq('id', surferId);
+    const s = surfers.find(x => x.id === surferId);
+    if (s) s.email = vals.email;
+    renderHome();
+    toast(`Login set up for ${surfer?.name}!`, 'success');
+  });
+}
+
+async function handleDropOnSurfer(e, surferId) {
+  const uid = e.dataTransfer.getData('unassignedId');
+  // If clips are selected, upload all selected; otherwise upload the dragged one
+  const toUpload = selectedClipIds.size > 0
+    ? unassigned.filter(u => selectedClipIds.has(u.id))
+    : unassigned.filter(u => u.id === uid);
+  if (!toUpload.length) return;
+  selectedClipIds.clear();
+  renderUnassigned();
+  // Upload sequentially
+  for (const u of toUpload) {
+    await uploadClipToSurfer(u, surferId);
+  }
 }
 
 async function deleteSurfer(surferId) {
