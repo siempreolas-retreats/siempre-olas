@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Siempre Olas — Surf Session Analyzer</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     LOADING
+══════════════════════════════════════ -->
+<div id="loadingScreen" class="loading-screen">
+  <img src="https://i.ibb.co/W4jggH5Z/Untitled-design-16.png" style="height:80px">
+  <div class="spinner"></div>
+  <p>Loading…</p>
+</div>
+
+<!-- ══════════════════════════════════════
+     LOGIN SCREEN
+══════════════════════════════════════ -->
+<div id="loginScreen" class="screen">
+  <div class="login-box">
+    <img class="login-logo" src="https://i.ibb.co/W4jggH5Z/Untitled-design-16.png" alt="Siempre Olas">
+    <h2>Surf Session Analyzer</h2>
+    <p class="login-sub">Sign in to your account</p>
+    <div class="login-form">
+      <div class="form-field">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="your@email.com" autocomplete="email">
+      </div>
+      <div class="form-field">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <div class="login-error" id="loginError"></div>
+      <button class="btn btn-primary login-btn" onclick="handleLogin()">Sign In</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     COACH HOME
+══════════════════════════════════════ -->
+<div id="coachHome" class="screen">
+  <nav id="coachNav">
+    <div class="logo-wrap">
+      <img class="logo-img" src="https://i.ibb.co/W4jggH5Z/Untitled-design-16.png" alt="Siempre Olas">
+      <span class="logo-subtitle">surf session analyzer</span>
+    </div>
+    <div class="spacer"></div>
+    <span class="nav-user">Coach: <strong id="navUserName"></strong></span>
+    <button class="btn btn-primary" onclick="openAddSurfer()">+ Add Surfer</button>
+    <button class="btn btn-ghost btn-sm" onclick="signOut()">Sign Out</button>
+  </nav>
+
+  <!-- Upload strip -->
+  <div id="uploadStrip">
+    <span class="strip-label">📥 Upload Videos</span>
+    <div id="bulkDropZone"
+         onclick="document.getElementById('bulkFileInput').click()"
+         ondragover="handleBulkDragOver(event)"
+         ondrop="handleBulkDrop(event)"
+         ondragleave="this.classList.remove('drag-over')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+        <path d="M8 2v9M4 7l4-5 4 5M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      Drop video files here, or click to browse — then drag onto a surfer's card
+    </div>
+    <input type="file" id="bulkFileInput" multiple accept="video/*" onchange="handleBulkFiles(this.files)">
+    <div id="unassignedTray">
+      <span class="tray-label">Unassigned:</span>
+      <span id="unassignedCount">0</span>
+      <div id="clipTray"></div>
+    </div>
+  </div>
+
+  <div id="homeContent">
+    <div class="section-header">
+      <h2>Surfers <span id="surferCount"></span></h2>
+    </div>
+    <div id="surferGrid"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     PROFILE SCREEN (shared coach + surfer)
+══════════════════════════════════════ -->
+<div id="profileScreen" class="screen">
+  <nav id="profileNav">
+    <button class="back-btn" id="backFromProfile" onclick="goHome()">← Back</button>
+    <div id="profileAvatar">?</div>
+    <div>
+      <div id="profileName">—</div>
+      <div id="profileClipCount"></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost btn-sm" id="compareToggleBtn" onclick="toggleCompareMode()" style="display:none">⊞ Compare</button>
+    <button class="btn btn-ghost btn-sm" id="renameSurferBtn" onclick="renameSurfer()" style="display:none">✏️ Rename</button>
+    <button class="btn btn-danger btn-sm" id="deleteSurferBtn" onclick="deleteSurferConfirm()" style="display:none">🗑 Delete</button>
+  </nav>
+
+  <div id="profileBody">
+    <!-- Sidebar (coach only, hidden for surfers) -->
+    <div id="clipsSidebar">
+      <div class="sidebar-header">
+        <span>Clips</span>
+        <span id="sidebarClipCount" style="color:var(--coral);font-family:var(--mono)"></span>
+      </div>
+      <div id="clipsList"></div>
+    </div>
+
+    <!-- Main content -->
+    <div id="profileMain">
+      <div id="singleView">
+        <div id="profileVideoWrap" style="display:none">
+          <video id="profileVideo" playsinline></video>
+          <div id="tsOverlay">
+            <span class="ts-overlay-time" id="tsOverlayTime">0:00</span>
+            <span class="ts-overlay-note" id="tsOverlayNote"></span>
+          </div>
+          <div id="profilePlayerControls">
+            <div id="profileSeekWrap">
+              <div id="profileSeekBg"></div>
+              <div id="profileSeekFill"></div>
+              <div id="profileSeekThumb"></div>
+            </div>
+            <div id="profilePlayerRow">
+              <button class="p-ctrl-btn" onclick="pStep(-1)">◀</button>
+              <button class="p-ctrl-btn" id="pPlayBtn" onclick="pTogglePlay()">▶</button>
+              <button class="p-ctrl-btn" onclick="pStep(1)">▶</button>
+              <span id="profileTimeDisplay">0:00 / 0:00</span>
+              <button id="profileSpeedBtn" onclick="pCycleSpeed()">1×</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="profileEmptyState" class="empty-state">
+          <div class="big-icon">🎥</div>
+          <h3>No clip selected</h3>
+          <p>Pick a clip from the sidebar to preview it here</p>
+        </div>
+
+        <div class="notes-area" id="notesArea" style="display:none">
+          <label>Coach Notes</label>
+          <textarea id="clipNotes" placeholder="Add coaching notes for this clip…" oninput="saveClipNotes()"></textarea>
+        </div>
+
+        <div class="snapshots-section" id="snapshotsSection" style="display:none">
+          <h4>Annotated Snapshots</h4>
+          <div class="snapshots-grid" id="snapshotsGrid"></div>
+        </div>
+      </div>
+
+      <!-- Compare view -->
+      <div id="compareWrap">
+        <div class="compare-slot" id="compareSlotA">
+          <div class="slot-label" id="slotLabelA">Clip A</div>
+          <video id="compareVideoA" playsinline></video>
+          <div class="cmp-ts-overlay" id="cmpOverlayA">
+            <span class="ts-overlay-time" id="cmpOverlayTimeA"></span>
+            <span class="ts-overlay-note" id="cmpOverlayNoteA"></span>
+          </div>
+          <div class="cmp-player-controls">
+            <div class="cmp-seek-wrap" id="cmpSeekA">
+              <div class="cmp-seek-bg"></div>
+              <div class="cmp-seek-fill" id="cmpFillA"></div>
+              <div class="cmp-seek-thumb" id="cmpThumbA"></div>
+            </div>
+            <div class="cmp-row">
+              <button class="p-ctrl-btn" onclick="cmpTogglePlay('A')">▶</button>
+              <span class="cmp-time" id="cmpTimeA">0:00 / 0:00</span>
+              <button class="cmp-speed-btn" id="cmpSpeedA" onclick="cmpCycleSpeed('A')">1×</button>
+            </div>
+          </div>
+        </div>
+        <div class="compare-slot" id="compareSlotB">
+          <div class="slot-label" id="slotLabelB">Clip B</div>
+          <video id="compareVideoB" playsinline></video>
+          <div class="cmp-ts-overlay" id="cmpOverlayB">
+            <span class="ts-overlay-time" id="cmpOverlayTimeB"></span>
+            <span class="ts-overlay-note" id="cmpOverlayNoteB"></span>
+          </div>
+          <div class="cmp-player-controls">
+            <div class="cmp-seek-wrap" id="cmpSeekB">
+              <div class="cmp-seek-bg"></div>
+              <div class="cmp-seek-fill" id="cmpFillB"></div>
+              <div class="cmp-seek-thumb" id="cmpThumbB"></div>
+            </div>
+            <div class="cmp-row">
+              <button class="p-ctrl-btn" onclick="cmpTogglePlay('B')">▶</button>
+              <span class="cmp-time" id="cmpTimeB">0:00 / 0:00</span>
+              <button class="cmp-speed-btn" id="cmpSpeedB" onclick="cmpCycleSpeed('B')">1×</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     ANALYZER SCREEN (coach only)
+══════════════════════════════════════ -->
+<div id="analyzerScreen" class="screen">
+  <nav id="analyzerNav">
+    <button class="back-btn" onclick="closeAnalyzer()">← Back</button>
+    <div class="nav-divider"></div>
+    <div class="tool-group">
+      <button class="tool-btn active" id="abtn-pen" onclick="aTool('pen')">✏️<span class="tip">Pen (P)</span></button>
+      <button class="tool-btn" id="abtn-arrow" onclick="aTool('arrow')">➡️<span class="tip">Arrow (A)</span></button>
+      <button class="tool-btn" id="abtn-circle" onclick="aTool('circle')">⭕<span class="tip">Circle (C)</span></button>
+      <button class="tool-btn" id="abtn-rect" onclick="aTool('rect')">▭<span class="tip">Rect (R)</span></button>
+      <button class="tool-btn" id="abtn-line" onclick="aTool('line')">╱<span class="tip">Line (L)</span></button>
+      <button class="tool-btn" id="abtn-text" onclick="aTool('text')">T<span class="tip">Text (T)</span></button>
+      <button class="tool-btn" id="abtn-eraser" onclick="aTool('eraser')">🧹<span class="tip">Eraser (E)</span></button>
+    </div>
+    <div class="tool-group" style="gap:5px;">
+      <div class="color-swatch active" style="background:#e8927a" data-color="#e8927a" onclick="aColorFn(this)"></div>
+      <div class="color-swatch" style="background:#e8c882" data-color="#e8c882" onclick="aColorFn(this)"></div>
+      <div class="color-swatch" style="background:#7ab8b8" data-color="#7ab8b8" onclick="aColorFn(this)"></div>
+      <div class="color-swatch" style="background:#a8c4d4" data-color="#a8c4d4" onclick="aColorFn(this)"></div>
+      <div class="color-swatch" style="background:#ffffff" data-color="#ffffff" onclick="aColorFn(this)"></div>
+      <div class="color-swatch" style="background:#8aaa88" data-color="#8aaa88" onclick="aColorFn(this)"></div>
+    </div>
+    <div class="tool-group">
+      <div class="slider-wrap"><label>SZ</label><input type="range" class="thin-slider" id="aStroke" min="2" max="28" value="4"></div>
+      <div class="slider-wrap"><label>OP</label><input type="range" class="thin-slider" id="aOpacity" min="10" max="100" value="90"></div>
+    </div>
+    <div class="tool-group">
+      <button class="tool-btn" onclick="aUndo()">↩️<span class="tip">Undo (⌘Z)</span></button>
+      <button class="tool-btn" onclick="aClearAll()" style="position:relative">
+        🗑️<div class="annot-badge" id="aAnnotBadge"></div><span class="tip">Clear All</span>
+      </button>
+      <button class="tool-btn" onclick="aSaveSnapshot()">📸<span class="tip">Save Snapshot</span></button>
+    </div>
+    <div class="nav-divider"></div>
+    <button id="addTsBtn" onclick="openTsPopup()">📍 Add Timestamp</button>
+    <button id="toggleTsPanelBtn" onclick="toggleTsPanel()">📋 Notes</button>
+  </nav>
+
+  <div id="analyzerBody">
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+      <div id="analyzerMain">
+        <video id="analyzerVideo" playsinline></video>
+        <canvas id="analyzerCanvas"></canvas>
+      </div>
+      <div id="analyzerControls">
+        <button class="frame-btn" onclick="aStep(-1)">◀</button>
+        <button id="analyzerPlayBtn" onclick="aTogglePlay()">▶</button>
+        <button class="frame-btn" onclick="aStep(1)">▶</button>
+        <input type="range" id="analyzerSeek" min="0" max="100" value="0" step="0.01">
+        <span id="analyzerTime">0:00 / 0:00</span>
+        <button id="speedBtn" onclick="aCycleSpeed()">1×</button>
+      </div>
+    </div>
+    <div id="analyzerTsPanel">
+      <div class="ats-header">Timestamps <span id="atsBadge"></span></div>
+      <div id="atsList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SURFER HOME
+══════════════════════════════════════ -->
+<div id="surferHome" class="screen">
+  <nav id="surferNav">
+    <div class="logo-wrap">
+      <img class="logo-img" src="https://i.ibb.co/W4jggH5Z/Untitled-design-16.png" alt="Siempre Olas">
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost btn-sm" id="surferCompareBtn" onclick="surferToggleCompare()" style="display:none">⊞ Compare Clips</button>
+    <button class="btn btn-ghost btn-sm" onclick="signOut()">Sign Out</button>
+  </nav>
+  <div id="surferContent">
+    <div class="surfer-welcome">
+      <h2>Hey, <span id="surferWelcomeName"></span> 🏄</h2>
+      <p>Your surf sessions from the week — click any clip to watch with your coach's notes.</p>
+    </div>
+    <div class="surfer-clips-section">
+      <div id="surferClipsContainer"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     TIMESTAMP POPUP
+══════════════════════════════════════ -->
+<div id="tsPopup">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="font-size:15px">📍</span>
+    <span style="font-size:12px;color:var(--muted)">Timestamp at</span>
+    <span class="ts-popup-time" id="tsPopupTime">0:00</span>
+  </div>
+  <input type="text" id="tsNoteInput" placeholder="e.g. Bend knees more on takeoff…">
+  <div class="ts-popup-row">
+    <button class="ts-cancel-btn" onclick="closeTsPopup()">Cancel</button>
+    <button class="ts-save-btn" onclick="saveTsNote()">Save</button>
+  </div>
+</div>
+
+<!-- Upload progress -->
+<div id="uploadProgressOverlay">
+  <div class="upload-progress-box">
+    <h3>Uploading…</h3>
+    <div style="font-size:12px;color:var(--muted);font-family:var(--mono);text-align:center" id="uploadFileName"></div>
+    <div class="upload-progress-bar-wrap">
+      <div class="upload-progress-bar" id="uploadProgressBar"></div>
+    </div>
+    <div class="upload-progress-text" id="uploadProgressPct">0%</div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div id="modalOverlay">
+  <div id="modal">
+    <h3 id="modalTitle">—</h3>
+    <div class="modal-row">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmModal()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Scripts -->
+<script src="supabase.js"></script>
+<script src="auth.js"></script>
+<script src="shared.js"></script>
+<script src="coach.js"></script>
+<script src="surfer.js"></script>
+<script>
+// ── ENTRY POINT ──
+async function deleteSurferConfirm() {
+  if (!confirm('Delete this surfer and all their clips? This cannot be undone.')) return;
+  await deleteSurfer(currentSurferId);
+}
+
+async function handleLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'Please enter email and password.'; return; }
+  try {
+    await signIn(email, password);
+    await boot();
+  } catch(e) {
+    errEl.textContent = e.message || 'Login failed. Please check your credentials.';
+  }
+}
+
+document.getElementById('loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginPassword').focus(); });
+document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+
+async function boot() {
+  // Hide loading, show nothing until we know who's logged in
+  document.getElementById('loadingScreen').style.display = 'none';
+  const session = await getSession();
+  if (!session) { showScreen('loginScreen'); return; }
+  const user = await getCurrentUser();
+  if (!user) { showScreen('loginScreen'); return; }
+  if (user.role === 'coach') { await initCoach(user); }
+  else { await initSurfer(user); }
+}
+
+// Start
+boot();
+</script>
+</body>
+</html>
