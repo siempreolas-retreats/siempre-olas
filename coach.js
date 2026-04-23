@@ -222,26 +222,28 @@ function openAddSurfer() {
 
 function openInviteSurfer(surferId) {
   const surfer = surfers.find(s => s.id === surferId);
-  openModal('Invite to App', [
+  openModal('Invite ' + (surfer?.name || 'Surfer') + ' to App', [
     { key: 'email', label: 'Their Email Address', type: 'email', placeholder: 'surfer@email.com' },
-    { key: 'password', label: 'Set a Password for Them', type: 'password', placeholder: 'Min 6 characters' },
-    { type: 'hint', text: `${surfer?.name} can log in at siempre-olas.vercel.app to view their clips and timestamps.` }
-  ], 'Set Up Login', async (vals) => {
+    { type: 'hint', text: `They'll receive an email with a link to set their own password and log in at siempre-olas.vercel.app` }
+  ], 'Send Invite', async (vals) => {
     if (!vals.email) throw new Error('Email is required');
-    if (!vals.password || vals.password.length < 6) throw new Error('Password must be at least 6 characters');
+    // Use Supabase signUp with a random password — they'll set their own via the invite email
+    const tempPassword = crypto.randomUUID();
     const { data, error } = await db.auth.signUp({
       email: vals.email,
-      password: vals.password,
-      options: { data: { name: surfer?.name, role: 'surfer' } }
+      password: tempPassword,
+      options: {
+        data: { name: surfer?.name, role: 'surfer' },
+        emailRedirectTo: 'https://siempre-olas.vercel.app'
+      }
     });
     if (error) throw error;
-    await new Promise(r => setTimeout(r, 800));
-    // Update the surfer's profile with real email
+    // Link auth user to surfer record
     await db.from('surfers').update({ email: vals.email, auth_user_id: data.user?.id }).eq('id', surferId);
     const s = surfers.find(x => x.id === surferId);
     if (s) s.email = vals.email;
     renderHome();
-    toast(`Login set up for ${surfer?.name}!`, 'success');
+    toast(`Invite sent to ${vals.email}!`, 'success');
   });
 }
 
