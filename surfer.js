@@ -9,8 +9,8 @@ let surferCompareClipAId = null;
 
 async function initSurfer(user) {
   surferUser = user;
-  document.getElementById('surferName').textContent = user.name;
-  document.getElementById('surferWelcomeName').textContent = user.name.split(' ')[0];
+  const welcomeEl = document.getElementById('surferWelcomeName');
+  if (welcomeEl) welcomeEl.textContent = user.name.split(' ')[0];
   showScreen('surferHome');
   await loadSurferData();
   renderSurferClips();
@@ -20,19 +20,22 @@ async function initSurfer(user) {
 }
 
 async function loadSurferData() {
-  const [c, ts, sn] = await Promise.all([
-    db.from('clips').select('*').eq('surfer_id', surferUser.id).order('created_at'),
-    db.from('timestamps').select('*').in('clip_id', await getClipIds()).order('time_seconds'),
-    db.from('snapshots').select('*').in('clip_id', await getClipIds()).order('created_at', { ascending: false }),
+  // Find surfer record by auth_user_id
+  const { data: surferRecord } = await db.from('surfers').select('*').eq('auth_user_id', surferUser.id).single();
+  const surferId = surferRecord?.id || surferUser.id;
+
+  const clipRes = await db.from('clips').select('*').or(`surfer_ref.eq.${surferId},surfer_id.eq.${surferUser.id}`).order('created_at');
+  surferClips = clipRes.data || [];
+
+  const clipIds = surferClips.map(c => c.id);
+  if (!clipIds.length) { surferTimestamps = []; surferSnapshots = []; return; }
+
+  const [ts, sn] = await Promise.all([
+    db.from('timestamps').select('*').in('clip_id', clipIds).order('time_seconds'),
+    db.from('snapshots').select('*').in('clip_id', clipIds).order('created_at', { ascending: false }),
   ]);
-  surferClips = c.data || [];
   surferTimestamps = ts.data || [];
   surferSnapshots = sn.data || [];
-}
-
-async function getClipIds() {
-  const { data } = await db.from('clips').select('id').eq('surfer_id', surferUser.id);
-  return (data || []).map(c => c.id);
 }
 
 function renderSurferClips() {
