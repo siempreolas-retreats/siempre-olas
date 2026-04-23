@@ -37,6 +37,7 @@
       </div>
       <div class="login-error" id="loginError"></div>
       <button class="btn btn-primary login-btn" onclick="handleLogin()">Sign In</button>
+      <button onclick="showForgotPassword()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:var(--sans);margin-top:4px;">Forgot password?</button>
     </div>
   </div>
 </div>
@@ -357,6 +358,44 @@ async function handleLogin() {
 
 document.getElementById('loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginPassword').focus(); });
 document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+
+function showForgotPassword() {
+  const box = document.querySelector('.login-box');
+  box.innerHTML = `
+    <img class="login-logo" src="https://i.ibb.co/W4jggH5Z/Untitled-design-16.png" alt="Siempre Olas">
+    <h2>Reset Password</h2>
+    <p class="login-sub">Enter your email and we'll send a reset link</p>
+    <div class="login-form">
+      <div class="form-field">
+        <label>Email</label>
+        <input type="email" id="resetEmail" placeholder="your@email.com" autocomplete="email">
+      </div>
+      <div class="login-error" id="resetError"></div>
+      <button class="btn btn-primary login-btn" onclick="handleForgotPassword()">Send Reset Link</button>
+      <button onclick="location.reload()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:var(--sans);margin-top:4px;">Back to login</button>
+    </div>`;
+}
+
+async function handleForgotPassword() {
+  const email = document.getElementById('resetEmail').value.trim();
+  const errEl = document.getElementById('resetError');
+  if (!email) { errEl.textContent = 'Please enter your email'; return; }
+  errEl.textContent = '';
+  // Use Supabase password reset - sends via Resend if configured, otherwise direct
+  const { error } = await db.auth.resetPasswordForEmail(email, {
+    redirectTo: 'https://siempre-olas.vercel.app'
+  });
+  // Also send via Resend directly as backup
+  try {
+    await sendInviteEmail(email, '', 'https://siempre-olas.vercel.app');
+  } catch(e) {}
+  // Show success regardless (don't reveal if email exists)
+  document.querySelector('.login-box').innerHTML = `
+    <img class="login-logo" src="https://i.ibb.co/W4jggH5Z/Untitled-design-16.png" alt="Siempre Olas">
+    <h2 style="font-family:var(--serif)">Check your email</h2>
+    <p class="login-sub" style="text-align:center">If an account exists for ${email}, you'll receive a password reset link shortly.</p>
+    <button onclick="location.reload()" class="btn btn-primary login-btn" style="margin-top:8px">Back to login</button>`;
+}
 
 async function boot() {
   document.getElementById('loadingScreen').style.display = 'none';
