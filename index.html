@@ -359,14 +359,54 @@ document.getElementById('loginEmail').addEventListener('keydown', e => { if (e.k
 document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
 
 async function boot() {
-  // Hide loading, show nothing until we know who's logged in
   document.getElementById('loadingScreen').style.display = 'none';
+
+  // Check if this is a password reset redirect
+  const hash = window.location.hash;
+  if (hash && hash.includes('type=recovery')) {
+    showPasswordResetScreen();
+    return;
+  }
+
   const session = await getSession();
   if (!session) { showScreen('loginScreen'); return; }
   const user = await getCurrentUser();
   if (!user) { showScreen('loginScreen'); return; }
   if (user.role === 'coach') { await initCoach(user); }
   else { await initSurfer(user); }
+}
+
+function showPasswordResetScreen() {
+  // Show a simple password reset form
+  document.body.innerHTML = `
+    <div style="min-height:100vh;background:var(--cream);display:flex;align-items:center;justify-content:center;font-family:var(--sans)">
+      <div style="background:white;border-radius:24px;padding:40px;width:380px;box-shadow:0 8px 40px rgba(44,36,22,0.1);display:flex;flex-direction:column;gap:20px;align-items:center">
+        <img src="https://i.ibb.co/W4jggH5Z/Untitled-design-16.png" style="height:60px">
+        <h2 style="font-family:var(--serif);font-size:22px;color:var(--ink)">Set Your Password</h2>
+        <p style="font-size:13px;color:var(--muted);text-align:center">Choose a password to access your surf sessions.</p>
+        <input type="password" id="newPassword" placeholder="New password (min 6 characters)"
+          style="width:100%;background:var(--cream);border:1px solid var(--edge);border-radius:10px;padding:11px 14px;font-family:var(--sans);font-size:14px;outline:none;color:var(--ink)">
+        <input type="password" id="confirmPassword" placeholder="Confirm password"
+          style="width:100%;background:var(--cream);border:1px solid var(--edge);border-radius:10px;padding:11px 14px;font-family:var(--sans);font-size:14px;outline:none;color:var(--ink)">
+        <div id="resetError" style="color:#e8927a;font-size:12px;min-height:16px;text-align:center"></div>
+        <button onclick="submitNewPassword()"
+          style="width:100%;background:#e8927a;color:white;border:none;border-radius:50px;padding:12px;font-family:var(--sans);font-size:14px;font-weight:500;cursor:pointer">
+          Save Password & Log In
+        </button>
+      </div>
+    </div>`;
+}
+
+async function submitNewPassword() {
+  const pw = document.getElementById('newPassword').value;
+  const confirm = document.getElementById('confirmPassword').value;
+  const errEl = document.getElementById('resetError');
+  if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters'; return; }
+  if (pw !== confirm) { errEl.textContent = 'Passwords do not match'; return; }
+  const { error } = await db.auth.updateUser({ password: pw });
+  if (error) { errEl.textContent = error.message; return; }
+  // Reload to go to the app
+  window.location.href = 'https://siempre-olas.vercel.app';
 }
 
 // Start

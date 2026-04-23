@@ -224,24 +224,29 @@ function openInviteSurfer(surferId) {
   const surfer = surfers.find(s => s.id === surferId);
   openModal('Invite ' + (surfer?.name || 'Surfer') + ' to App', [
     { key: 'email', label: 'Their Email Address', type: 'email', placeholder: 'surfer@email.com' },
-    { type: 'hint', text: `They'll receive an email with a link to set their own password and log in at siempre-olas.vercel.app` }
+    { type: 'hint', text: `They'll get an email with a link to set their own password and log in.` }
   ], 'Send Invite', async (vals) => {
     if (!vals.email) throw new Error('Email is required');
-    // Use Supabase signUp with a random password — they'll set their own via the invite email
-    const tempPassword = crypto.randomUUID();
+    // Create account with temp password
+    const tempPassword = crypto.randomUUID() + 'Aa1!';
     const { data, error } = await db.auth.signUp({
       email: vals.email,
       password: tempPassword,
-      options: {
-        data: { name: surfer?.name, role: 'surfer' },
-        emailRedirectTo: 'https://siempre-olas.vercel.app'
-      }
+      options: { data: { name: surfer?.name, role: 'surfer' } }
     });
-    if (error) throw error;
-    // Link auth user to surfer record
-    await db.from('surfers').update({ email: vals.email, auth_user_id: data.user?.id }).eq('id', surferId);
-    const s = surfers.find(x => x.id === surferId);
-    if (s) s.email = vals.email;
+    if (error && !error.message.includes('already registered')) throw error;
+    // Send password reset via Resend so they set their own password
+    const { data: resetData } = await db.auth.resetPasswordForEmail(vals.email, {
+      redirectTo: 'https://siempre-olas.vercel.app'
+    });
+    // Also send our branded invite email via Resend
+    await sendInviteEmail(vals.email, surfer?.name || 'Surfer', 'https://siempre-olas.vercel.app');
+    // Link to surfer record
+    if (data?.user) {
+      await db.from('surfers').update({ email: vals.email, auth_user_id: data.user.id }).eq('id', surferId);
+      const s = surfers.find(x => x.id === surferId);
+      if (s) { s.email = vals.email; s.auth_user_id = data.user.id; }
+    }
     renderHome();
     toast(`Invite sent to ${vals.email}!`, 'success');
   });
